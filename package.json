@@ -1,0 +1,25 @@
+{
+  "name": "feishu-mcp-remote",
+  "version": "1.0.0",
+  "description": "飞书 MCP 远程调用客户端 - 通过 HTTP 调用飞书官方 MCP 服务",
+  "main": "feishu-mcp-client.js",
+  "bin": {
+    "feishu-mcp": "./feishu-mcp-client.js"
+  },
+  "scripts": {
+    "test": "node feishu-mcp-client.js --help"
+  },
+  "keywords": [
+    "feishu",
+    "lark",
+    "mcp",
+    "model-context-protocol",
+    "document",
+    "api"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
