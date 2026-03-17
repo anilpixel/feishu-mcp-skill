@@ -36,7 +36,10 @@ const DEFAULT_SCOPES = [
   'contact:contact.base:readonly',
   'docs:document.comment:read',
   'docs:document.comment:create',
-  'offline_access'
+  'offline_access',
+  'wiki:node:read',                                                                               
+  'wiki:node:create',                                                                                    
+  'drive:drive', 
 ];
 
 /**
