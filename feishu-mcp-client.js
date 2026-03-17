@@ -6,41 +6,77 @@
  * 支持完整的 OAuth 2.0 授权流程
  */
 
-const https = require('https');
-const http = require('http');
-const { URL } = require('url');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
+const https = require("https");
+const http = require("http");
+const { URL } = require("url");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 
 // MCP 服务端点
-const MCP_ENDPOINT = 'https://mcp.feishu.cn/mcp';
-const MCP_ENDPOINT_LARK = 'https://mcp.larksuite.com/mcp';
+const MCP_ENDPOINT = "https://mcp.feishu.cn/mcp";
+const MCP_ENDPOINT_LARK = "https://mcp.larksuite.com/mcp";
 
 // OAuth 端点
-const OAUTH_AUTHORIZE_URL = 'https://accounts.feishu.cn/open-apis/authen/v1/authorize';
-const OAUTH_TOKEN_URL = 'https://open.feishu.cn/open-apis/authen/v2/oauth/token';
+const OAUTH_AUTHORIZE_URL =
+  "https://accounts.feishu.cn/open-apis/authen/v1/authorize";
+const OAUTH_TOKEN_URL =
+  "https://open.feishu.cn/open-apis/authen/v2/oauth/token";
 
 // Token 存储路径
-const TOKEN_CACHE_DIR = path.join(process.env.HOME || process.env.USERPROFILE, '.feishu-mcp');
-const TOKEN_CACHE_FILE = path.join(TOKEN_CACHE_DIR, 'tokens.json');
+const TOKEN_CACHE_DIR = path.join(
+  process.env.HOME || process.env.USERPROFILE,
+  ".feishu-mcp",
+);
+const TOKEN_CACHE_FILE = path.join(TOKEN_CACHE_DIR, "tokens.json");
+const CONFIG_FILE = path.join(TOKEN_CACHE_DIR, "config.json");
 
 // 默认权限列表
 const DEFAULT_SCOPES = [
-  'docx:document:create',
-  'docx:document:readonly',
-  'docx:document:write_only',
-  'search:docs:read',
-  'wiki:wiki:readonly',
-  'contact:user:search',
-  'contact:contact.base:readonly',
-  'docs:document.comment:read',
-  'docs:document.comment:create',
-  'offline_access',
-  'wiki:node:read',                                                                               
-  'wiki:node:create',                                                                                    
-  'drive:drive', 
+  "docx:document:create",
+  "docx:document:readonly",
+  "docx:document:write_only",
+  "search:docs:read",
+  "wiki:wiki:readonly",
+  "contact:user:search",
+  "contact:contact.base:readonly",
+  "docs:document.comment:read",
+  "docs:document.comment:create",
+  "offline_access",
+  "wiki:node:read",
+  "wiki:node:create",
+  "drive:drive",
 ];
+
+/**
+ * 保存配置到本地
+ */
+function saveConfig(appId, appSecret) {
+  ensureTokenCacheDir();
+
+  const config = {
+    appId,
+    appSecret,
+    savedAt: Date.now(),
+  };
+
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
+
+/**
+ * 从本地读取配置
+ */
+function loadConfig() {
+  if (!fs.existsSync(CONFIG_FILE)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+  } catch (e) {
+    return null;
+  }
+}
 
 /**
  * 确保 token 缓存目录存在
@@ -60,7 +96,7 @@ function saveTokens(appId, tokens) {
   let cache = {};
   if (fs.existsSync(TOKEN_CACHE_FILE)) {
     try {
-      cache = JSON.parse(fs.readFileSync(TOKEN_CACHE_FILE, 'utf-8'));
+      cache = JSON.parse(fs.readFileSync(TOKEN_CACHE_FILE, "utf-8"));
     } catch (e) {
       // 忽略解析错误
     }
@@ -68,7 +104,7 @@ function saveTokens(appId, tokens) {
 
   cache[appId] = {
     ...tokens,
-    savedAt: Date.now()
+    savedAt: Date.now(),
   };
 
   fs.writeFileSync(TOKEN_CACHE_FILE, JSON.stringify(cache, null, 2));
@@ -83,7 +119,7 @@ function loadTokens(appId) {
   }
 
   try {
-    const cache = JSON.parse(fs.readFileSync(TOKEN_CACHE_FILE, 'utf-8'));
+    const cache = JSON.parse(fs.readFileSync(TOKEN_CACHE_FILE, "utf-8"));
     return cache[appId] || null;
   } catch (e) {
     return null;
@@ -98,11 +134,11 @@ function isTokenExpired(tokens) {
     return true;
   }
 
-  const expiresAt = tokens.savedAt + (tokens.expires_in * 1000);
+  const expiresAt = tokens.savedAt + tokens.expires_in * 1000;
   const now = Date.now();
 
   // 提前 5 分钟刷新
-  return now >= (expiresAt - 5 * 60 * 1000);
+  return now >= expiresAt - 5 * 60 * 1000;
 }
 
 /**
@@ -116,18 +152,18 @@ function httpsRequest(url, options = {}) {
       hostname: urlObj.hostname,
       port: urlObj.port || 443,
       path: urlObj.pathname + urlObj.search,
-      method: options.method || 'GET',
-      headers: options.headers || {}
+      method: options.method || "GET",
+      headers: options.headers || {},
     };
 
     const req = https.request(reqOptions, (res) => {
-      let data = '';
+      let data = "";
 
-      res.on('data', (chunk) => {
+      res.on("data", (chunk) => {
         data += chunk;
       });
 
-      res.on('end', () => {
+      res.on("end", () => {
         try {
           const response = JSON.parse(data);
           resolve({ statusCode: res.statusCode, data: response });
@@ -137,7 +173,7 @@ function httpsRequest(url, options = {}) {
       });
     });
 
-    req.on('error', reject);
+    req.on("error", reject);
 
     if (options.body) {
       req.write(options.body);
@@ -155,12 +191,12 @@ function startCallbackServer(port = 3000) {
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, `http://localhost:${port}`);
 
-      if (url.pathname === '/callback') {
-        const code = url.searchParams.get('code');
-        const error = url.searchParams.get('error');
+      if (url.pathname === "/callback") {
+        const code = url.searchParams.get("code");
+        const error = url.searchParams.get("error");
 
         if (error) {
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           res.end(`
             <html>
               <head><title>授权失败</title></head>
@@ -174,7 +210,7 @@ function startCallbackServer(port = 3000) {
           server.close();
           reject(new Error(`授权失败: ${error}`));
         } else if (code) {
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           res.end(`
             <html>
               <head><title>授权成功</title></head>
@@ -194,22 +230,27 @@ function startCallbackServer(port = 3000) {
       console.log(`✓ 本地回调服务器已启动，监听端口 ${port}`);
     });
 
-    server.on('error', reject);
+    server.on("error", reject);
   });
 }
 
 /**
  * 获取授权码
  */
-async function getAuthorizationCode(appId, scopes, redirectUri, domain = 'feishu') {
-  const state = crypto.randomBytes(16).toString('hex');
-  const scopeStr = scopes.join(' ');
+async function getAuthorizationCode(
+  appId,
+  scopes,
+  redirectUri,
+  domain = "feishu",
+) {
+  const state = crypto.randomBytes(16).toString("hex");
+  const scopeStr = scopes.join(" ");
 
   const authUrl = `${OAUTH_AUTHORIZE_URL}?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopeStr)}&state=${state}`;
 
-  console.log('\n请在浏览器中打开以下链接进行授权：');
-  console.log('\n' + authUrl + '\n');
-  console.log('等待授权回调...\n');
+  console.log("\n请在浏览器中打开以下链接进行授权：");
+  console.log("\n" + authUrl + "\n");
+  console.log("等待授权回调...\n");
 
   const code = await startCallbackServer(3000);
   return code;
@@ -220,20 +261,20 @@ async function getAuthorizationCode(appId, scopes, redirectUri, domain = 'feishu
  */
 async function exchangeCodeForToken(appId, appSecret, code, redirectUri) {
   const body = JSON.stringify({
-    grant_type: 'authorization_code',
+    grant_type: "authorization_code",
     client_id: appId,
     client_secret: appSecret,
     code: code,
-    redirect_uri: redirectUri
+    redirect_uri: redirectUri,
   });
 
   const response = await httpsRequest(OAUTH_TOKEN_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(body)
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(body),
     },
-    body
+    body,
   });
 
   if (response.data.code === 0) {
@@ -241,10 +282,12 @@ async function exchangeCodeForToken(appId, appSecret, code, redirectUri) {
       access_token: response.data.access_token,
       refresh_token: response.data.refresh_token,
       expires_in: response.data.expires_in,
-      refresh_token_expires_in: response.data.refresh_token_expires_in
+      refresh_token_expires_in: response.data.refresh_token_expires_in,
     };
   } else {
-    throw new Error(`获取 token 失败: ${response.data.error_description || response.data.msg}`);
+    throw new Error(
+      `获取 token 失败: ${response.data.error_description || response.data.msg}`,
+    );
   }
 }
 
@@ -253,19 +296,19 @@ async function exchangeCodeForToken(appId, appSecret, code, redirectUri) {
  */
 async function refreshAccessToken(appId, appSecret, refreshToken) {
   const body = JSON.stringify({
-    grant_type: 'refresh_token',
+    grant_type: "refresh_token",
     client_id: appId,
     client_secret: appSecret,
-    refresh_token: refreshToken
+    refresh_token: refreshToken,
   });
 
   const response = await httpsRequest(OAUTH_TOKEN_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(body)
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(body),
     },
-    body
+    body,
   });
 
   if (response.data.code === 0) {
@@ -273,45 +316,56 @@ async function refreshAccessToken(appId, appSecret, refreshToken) {
       access_token: response.data.access_token,
       refresh_token: response.data.refresh_token,
       expires_in: response.data.expires_in,
-      refresh_token_expires_in: response.data.refresh_token_expires_in
+      refresh_token_expires_in: response.data.refresh_token_expires_in,
     };
   } else {
-    throw new Error(`刷新 token 失败: ${response.data.error_description || response.data.msg}`);
+    throw new Error(
+      `刷新 token 失败: ${response.data.error_description || response.data.msg}`,
+    );
   }
 }
 
 /**
  * 获取有效的 access token
  */
-async function getValidAccessToken(appId, appSecret, scopes = DEFAULT_SCOPES, forceRefresh = false) {
+async function getValidAccessToken(
+  appId,
+  appSecret,
+  scopes = DEFAULT_SCOPES,
+  forceRefresh = false,
+) {
   let tokens = loadTokens(appId);
 
   // 如果没有 token 或强制刷新，进行 OAuth 授权
   if (!tokens || forceRefresh) {
-    console.log('开始 OAuth 授权流程...');
-    const redirectUri = 'http://localhost:3000/callback';
+    console.log("开始 OAuth 授权流程...");
+    const redirectUri = "http://localhost:3000/callback";
     const code = await getAuthorizationCode(appId, scopes, redirectUri);
     tokens = await exchangeCodeForToken(appId, appSecret, code, redirectUri);
     saveTokens(appId, tokens);
-    console.log('✓ 授权成功，token 已保存');
+    console.log("✓ 授权成功，token 已保存");
     return tokens.access_token;
   }
 
   // 检查 token 是否过期
   if (isTokenExpired(tokens)) {
     if (tokens.refresh_token) {
-      console.log('Token 已过期，正在刷新...');
+      console.log("Token 已过期，正在刷新...");
       try {
-        tokens = await refreshAccessToken(appId, appSecret, tokens.refresh_token);
+        tokens = await refreshAccessToken(
+          appId,
+          appSecret,
+          tokens.refresh_token,
+        );
         saveTokens(appId, tokens);
-        console.log('✓ Token 刷新成功');
+        console.log("✓ Token 刷新成功");
         return tokens.access_token;
       } catch (error) {
-        console.log('✗ Token 刷新失败，重新授权...');
+        console.log("✗ Token 刷新失败，重新授权...");
         return getValidAccessToken(appId, appSecret, scopes, true);
       }
     } else {
-      console.log('Token 已过期且无 refresh_token，重新授权...');
+      console.log("Token 已过期且无 refresh_token，重新授权...");
       return getValidAccessToken(appId, appSecret, scopes, true);
     }
   }
@@ -328,26 +382,26 @@ async function sendMCPRequest(options) {
     method,
     params = {},
     allowedTools = [],
-    domain = 'feishu'
+    domain = "feishu",
   } = options;
 
-  const endpoint = domain === 'lark' ? MCP_ENDPOINT_LARK : MCP_ENDPOINT;
+  const endpoint = domain === "lark" ? MCP_ENDPOINT_LARK : MCP_ENDPOINT;
   const url = new URL(endpoint);
 
   // 构建请求头
   const headers = {
-    'Content-Type': 'application/json',
-    'X-Lark-MCP-UAT': token
+    "Content-Type": "application/json",
+    "X-Lark-MCP-UAT": token,
   };
 
   // 添加允许的工具列表
   if (allowedTools.length > 0) {
-    headers['X-Lark-MCP-Allowed-Tools'] = allowedTools.join(',');
+    headers["X-Lark-MCP-Allowed-Tools"] = allowedTools.join(",");
   }
 
   // 构建请求体
   const requestBody = {
-    jsonrpc: '2.0',
+    jsonrpc: "2.0",
     id: Date.now(),
     method,
   };
@@ -364,20 +418,20 @@ async function sendMCPRequest(options) {
         hostname: url.hostname,
         port: url.port || 443,
         path: url.pathname,
-        method: 'POST',
+        method: "POST",
         headers: {
           ...headers,
-          'Content-Length': Buffer.byteLength(postData),
+          "Content-Length": Buffer.byteLength(postData),
         },
       },
       (res) => {
-        let data = '';
+        let data = "";
 
-        res.on('data', (chunk) => {
+        res.on("data", (chunk) => {
           data += chunk;
         });
 
-        res.on('end', () => {
+        res.on("end", () => {
           try {
             const response = JSON.parse(data);
 
@@ -392,15 +446,15 @@ async function sendMCPRequest(options) {
           } catch (e) {
             reject({
               statusCode: res.statusCode,
-              error: { message: '响应解析失败', raw: data },
+              error: { message: "响应解析失败", raw: data },
             });
           }
         });
-      }
+      },
     );
 
-    req.on('error', (e) => {
-      reject({ error: { message: '请求失败', details: e.message } });
+    req.on("error", (e) => {
+      reject({ error: { message: "请求失败", details: e.message } });
     });
 
     req.write(postData);
@@ -412,18 +466,18 @@ async function sendMCPRequest(options) {
  * 授权命令
  */
 async function authorize(appId, appSecret, scopes, domain) {
-  console.log('='.repeat(60));
-  console.log('飞书 MCP OAuth 授权');
-  console.log('='.repeat(60));
-  console.log('');
+  console.log("=".repeat(60));
+  console.log("飞书 MCP OAuth 授权");
+  console.log("=".repeat(60));
+  console.log("");
 
   try {
     const token = await getValidAccessToken(appId, appSecret, scopes, true);
-    console.log('\n✓ 授权完成！');
+    console.log("\n✓ 授权完成！");
     console.log(`\nAccess Token: ${token.substring(0, 20)}...`);
-    console.log('\nToken 已保存到本地，后续调用将自动使用');
+    console.log("\nToken 已保存到本地，后续调用将自动使用");
   } catch (error) {
-    console.error('\n✗ 授权失败');
+    console.error("\n✗ 授权失败");
     console.error(error.message);
     process.exit(1);
   }
@@ -433,22 +487,22 @@ async function authorize(appId, appSecret, scopes, domain) {
  * 初始化 MCP 连接
  */
 async function initialize(appId, appSecret, scopes, domain) {
-  console.log('正在初始化 MCP 连接...');
+  console.log("正在初始化 MCP 连接...");
 
   try {
     const token = await getValidAccessToken(appId, appSecret, scopes);
 
     const response = await sendMCPRequest({
       token,
-      method: 'initialize',
+      method: "initialize",
       domain,
     });
 
-    console.log('✓ 连接成功');
+    console.log("✓ 连接成功");
     console.log(JSON.stringify(response, null, 2));
     return response;
   } catch (error) {
-    console.error('✗ 连接失败');
+    console.error("✗ 连接失败");
     console.error(JSON.stringify(error, null, 2));
     process.exit(1);
   }
@@ -458,33 +512,37 @@ async function initialize(appId, appSecret, scopes, domain) {
  * 列出可用工具
  */
 async function listTools(appId, appSecret, scopes, allowedTools, domain) {
-  console.log('正在获取工具列表...');
+  console.log("正在获取工具列表...");
 
   try {
     const token = await getValidAccessToken(appId, appSecret, scopes);
 
     const response = await sendMCPRequest({
       token,
-      method: 'tools/list',
+      method: "tools/list",
       allowedTools,
       domain,
     });
 
-    console.log('✓ 获取成功');
+    console.log("✓ 获取成功");
 
     if (response.result && response.result.tools) {
       console.log(`\n共 ${response.result.tools.length} 个可用工具：\n`);
       response.result.tools.forEach((tool, index) => {
         console.log(`${index + 1}. ${tool.name}`);
-        console.log(`   描述：${tool.description || tool.annotations?.title || '无'}`);
-        console.log(`   参数：${JSON.stringify(tool.inputSchema?.properties || {})}`);
-        console.log('');
+        console.log(
+          `   描述：${tool.description || tool.annotations?.title || "无"}`,
+        );
+        console.log(
+          `   参数：${JSON.stringify(tool.inputSchema?.properties || {})}`,
+        );
+        console.log("");
       });
     }
 
     return response;
   } catch (error) {
-    console.error('✗ 获取失败');
+    console.error("✗ 获取失败");
     console.error(JSON.stringify(error, null, 2));
     process.exit(1);
   }
@@ -493,7 +551,15 @@ async function listTools(appId, appSecret, scopes, allowedTools, domain) {
 /**
  * 调用工具
  */
-async function callTool(appId, appSecret, scopes, toolName, args, allowedTools, domain) {
+async function callTool(
+  appId,
+  appSecret,
+  scopes,
+  toolName,
+  args,
+  allowedTools,
+  domain,
+) {
   console.log(`正在调用工具：${toolName}...`);
 
   try {
@@ -501,7 +567,7 @@ async function callTool(appId, appSecret, scopes, toolName, args, allowedTools, 
 
     const response = await sendMCPRequest({
       token,
-      method: 'tools/call',
+      method: "tools/call",
       params: {
         name: toolName,
         arguments: args,
@@ -510,20 +576,20 @@ async function callTool(appId, appSecret, scopes, toolName, args, allowedTools, 
       domain,
     });
 
-    console.log('✓ 调用成功');
+    console.log("✓ 调用成功");
 
     // 检查是否有错误
     if (response.result?.isError) {
-      console.log('\n⚠ 工具执行出错：');
+      console.log("\n⚠ 工具执行出错：");
       console.log(JSON.stringify(response.result.content, null, 2));
     } else {
-      console.log('\n结果：');
+      console.log("\n结果：");
       console.log(JSON.stringify(response, null, 2));
     }
 
     return response;
   } catch (error) {
-    console.error('✗ 调用失败');
+    console.error("✗ 调用失败");
     console.error(JSON.stringify(error, null, 2));
     process.exit(1);
   }
@@ -534,44 +600,46 @@ async function callTool(appId, appSecret, scopes, toolName, args, allowedTools, 
  */
 function parseArgs() {
   const args = process.argv.slice(2);
+  const config = loadConfig();
+
   const parsed = {
     action: args[0],
-    appId: null,
-    appSecret: null,
+    appId: config?.appId || null,
+    appSecret: config?.appSecret || null,
     toolName: null,
     args: {},
     tools: [],
     scopes: DEFAULT_SCOPES,
-    domain: 'feishu',
+    domain: "feishu",
   };
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
 
-    if (arg === '--app-id' && args[i + 1]) {
+    if (arg === "--app-id" && args[i + 1]) {
       parsed.appId = args[i + 1];
       i++;
-    } else if (arg === '--app-secret' && args[i + 1]) {
+    } else if (arg === "--app-secret" && args[i + 1]) {
       parsed.appSecret = args[i + 1];
       i++;
-    } else if (arg === '--tool-name' && args[i + 1]) {
+    } else if (arg === "--tool-name" && args[i + 1]) {
       parsed.toolName = args[i + 1];
       i++;
-    } else if (arg === '--args' && args[i + 1]) {
+    } else if (arg === "--args" && args[i + 1]) {
       try {
         parsed.args = JSON.parse(args[i + 1]);
       } catch (e) {
-        console.error('错误：--args 参数必须是有效的 JSON 格式');
+        console.error("错误：--args 参数必须是有效的 JSON 格式");
         process.exit(1);
       }
       i++;
-    } else if (arg === '--tools' && args[i + 1]) {
-      parsed.tools = args[i + 1].split(',').map(t => t.trim());
+    } else if (arg === "--tools" && args[i + 1]) {
+      parsed.tools = args[i + 1].split(",").map((t) => t.trim());
       i++;
-    } else if (arg === '--scopes' && args[i + 1]) {
-      parsed.scopes = args[i + 1].split(',').map(s => s.trim());
+    } else if (arg === "--scopes" && args[i + 1]) {
+      parsed.scopes = args[i + 1].split(",").map((s) => s.trim());
       i++;
-    } else if (arg === '--domain' && args[i + 1]) {
+    } else if (arg === "--domain" && args[i + 1]) {
       parsed.domain = args[i + 1];
       i++;
     }
@@ -597,8 +665,8 @@ function showHelp() {
   call-tool         调用指定工具
 
 选项：
-  --app-id <id>             应用 App ID（必需）
-  --app-secret <secret>     应用 App Secret（必需）
+  --app-id <id>             应用 App ID（首次使用必需，之后会自动保存）
+  --app-secret <secret>     应用 App Secret（首次使用必需，之后会自动保存）
   --tool-name <name>        工具名称（用于 call-tool）
   --args <json>             工具参数（JSON 格式，用于 call-tool）
   --tools <list>            允许调用的工具列表（逗号分隔）
@@ -607,21 +675,17 @@ function showHelp() {
 
 示例：
 
-  # 1. 首次授权（会打开浏览器）
+  # 1. 首次授权
   node feishu-mcp-client.js auth \\
     --app-id "cli_xxxxx" \\
     --app-secret "xxxxx"
 
   # 2. 列出可用工具
   node feishu-mcp-client.js list-tools \\
-    --app-id "cli_xxxxx" \\
-    --app-secret "xxxxx" \\
     --tools "create-doc,fetch-doc,search-doc"
 
   # 3. 调用工具
   node feishu-mcp-client.js call-tool \\
-    --app-id "cli_xxxxx" \\
-    --app-secret "xxxxx" \\
     --tool-name "search-doc" \\
     --args '{"query":"项目计划"}'
 
@@ -632,7 +696,8 @@ function showHelp() {
     --scopes "docx:document:readonly,contact:user:search,offline_access"
 
 注意事项：
-  - 首次使用需要先执行 auth 命令进行授权
+  - 首次使用需要提供 --app-id 和 --app-secret，会自动保存到 ~/.feishu-mcp/config.json
+  - 后续使用会自动读取已保存的配置，无需重复提供
   - Token 会自动保存到 ~/.feishu-mcp/tokens.json
   - Token 过期后会自动刷新
   - 重定向 URL 必须配置为 http://localhost:3000/callback
@@ -645,35 +710,61 @@ function showHelp() {
 async function main() {
   const parsed = parseArgs();
 
-  if (!parsed.action || parsed.action === '--help' || parsed.action === '-h') {
+  if (!parsed.action || parsed.action === "--help" || parsed.action === "-h") {
     showHelp();
     return;
   }
 
   // 检查必需参数
   if (!parsed.appId || !parsed.appSecret) {
-    console.error('错误：必须提供 --app-id 和 --app-secret 参数');
-    console.error('使用 --help 查看帮助信息');
+    console.error("错误：必须提供 --app-id 和 --app-secret 参数");
+    console.error("或者先执行 auth 命令保存配置");
+    console.error("使用 --help 查看帮助信息");
     process.exit(1);
+  }
+
+  // 保存配置（如果通过命令行提供了参数）
+  const cmdLineArgs = process.argv.slice(2);
+  if (
+    cmdLineArgs.includes("--app-id") &&
+    cmdLineArgs.includes("--app-secret")
+  ) {
+    saveConfig(parsed.appId, parsed.appSecret);
   }
 
   try {
     switch (parsed.action) {
-      case 'auth':
-        await authorize(parsed.appId, parsed.appSecret, parsed.scopes, parsed.domain);
+      case "auth":
+        await authorize(
+          parsed.appId,
+          parsed.appSecret,
+          parsed.scopes,
+          parsed.domain,
+        );
         break;
 
-      case 'init':
-        await initialize(parsed.appId, parsed.appSecret, parsed.scopes, parsed.domain);
+      case "init":
+        await initialize(
+          parsed.appId,
+          parsed.appSecret,
+          parsed.scopes,
+          parsed.domain,
+        );
         break;
 
-      case 'list-tools':
-        await listTools(parsed.appId, parsed.appSecret, parsed.scopes, parsed.tools, parsed.domain);
+      case "list-tools":
+        await listTools(
+          parsed.appId,
+          parsed.appSecret,
+          parsed.scopes,
+          parsed.tools,
+          parsed.domain,
+        );
         break;
 
-      case 'call-tool':
+      case "call-tool":
         if (!parsed.toolName) {
-          console.error('错误：call-tool 操作需要 --tool-name 参数');
+          console.error("错误：call-tool 操作需要 --tool-name 参数");
           process.exit(1);
         }
         await callTool(
@@ -683,17 +774,17 @@ async function main() {
           parsed.toolName,
           parsed.args,
           parsed.tools,
-          parsed.domain
+          parsed.domain,
         );
         break;
 
       default:
         console.error(`错误：未知操作 "${parsed.action}"`);
-        console.error('使用 --help 查看帮助信息');
+        console.error("使用 --help 查看帮助信息");
         process.exit(1);
     }
   } catch (error) {
-    console.error('执行失败:', error.message);
+    console.error("执行失败:", error.message);
     process.exit(1);
   }
 }
@@ -709,5 +800,5 @@ module.exports = {
   authorize,
   initialize,
   listTools,
-  callTool
+  callTool,
 };

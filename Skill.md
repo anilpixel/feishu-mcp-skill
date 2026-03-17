@@ -8,84 +8,54 @@ dependencies: node>=18.0.0
 
 通过 HTTP 请求调用飞书官方部署的 MCP 服务，无需本地部署即可使用飞书的云文档、知识库等能力。
 
-## 前置要求
+## 初始化配置
 
-1. **飞书应用凭证**：
-   - App ID - 应用标识
-   - App Secret - 应用密钥
-   - 获取方式：飞书开放平台 → 应用详情 → 凭证与基础信息
+### 1. 准备飞书应用凭证
 
-2. **重定向 URL 配置**：
-   - 在飞书开放平台 → 安全设置 → 重定向 URL
-   - 添加：`http://localhost:3000/callback`
+- 访问 [飞书开放平台](https://open.feishu.cn/) 创建自建应用
+- 获取 **App ID** 和 **App Secret**
+- 在安全设置中配置重定向 URL：`http://localhost:3000/callback`
 
-## 使用方法
+### 2. 执行 OAuth 授权
 
-### 首次使用：OAuth 授权
-
-第一次使用时需要完成 OAuth 授权流程：
+首次使用时运行授权命令：
 
 ```bash
 node feishu-mcp-client.js auth --app-id <你的AppID> --app-secret <你的AppSecret>
 ```
 
-脚本会：
+授权流程：
+1. 自动保存应用凭证到本地
+2. 启动本地回调服务器
+3. 在浏览器中完成授权
+4. 自动获取并保存 token
 
-1. 启动本地回调服务器（端口 3000）
-2. 生成授权链接并在终端显示
-3. 你在浏览器中打开链接并授权
-4. 自动获取并保存 token 到本地
+完成后，配置和 token 会保存到 `~/.feishu-mcp/`，后续使用无需再提供凭证。
 
-Token 会自动保存到 `~/.feishu-mcp/tokens.json`，后续使用会自动刷新。
+## 可用工具
 
-### 查看可用工具
+### 查看工具列表
 
 ```bash
-node feishu-mcp-client.js list-tools --app-id <AppID> --tools "create-doc,fetch-doc,search-doc"
+node feishu-mcp-client.js list-tools --tools "create-doc,fetch-doc,search-doc"
 ```
 
-这会显示工具的详细说明和参数定义。
+这会显示每个工具的详细说明和参数定义。
 
 ### 调用工具
 
 ```bash
 node feishu-mcp-client.js call-tool \
-  --app-id <AppID> \
   --tool-name "search-doc" \
-  --args '{"query":"项目"}'
+  --args '{"query":"项目计划"}'
 ```
-
-脚本会自动：
-
-- 从本地加载 token
-- 检查 token 是否过期
-- 如果过期，自动使用 refresh_token 刷新
-- 如果 refresh_token 也过期，提示重新授权
-
-## 支持的工具
-
-### 通用工具
-
-- `search-user` - 搜索企业用户
-- `get-user` - 获取用户信息
-- `fetch-file` - 获取文件内容
-
-### 云文档工具
-
-- `search-doc` - 搜索云文档
-- `create-doc` - 创建云文档（支持知识库）
-- `fetch-doc` - 查看云文档
-- `update-doc` - 更新云文档
-- `list-docs` - 列出文档列表
-- `get-comments` - 获取文档评论
-- `add-comments` - 添加文档评论
-
-**使用前请先通过 `list-tools` 查看工具的详细参数说明。**
 
 ## 注意事项
 
-1. 工具调用需要在 `--tools` 参数中声明
-2. 参数格式必须为有效的 JSON
+1. 首次使用需要执行 `auth` 命令进行授权
+2. 工具调用需要在 `--tools` 参数中声明允许的工具列表
+3. 工具参数必须是有效的 JSON 格式
+4. Token 过期会自动刷新，refresh_token 过期需要重新授权
 
 ## 参考资料
 
