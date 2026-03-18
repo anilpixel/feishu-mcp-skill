@@ -33,19 +33,24 @@ const CONFIG_FILE = path.join(TOKEN_CACHE_DIR, "config.json");
 
 // 默认权限列表
 const DEFAULT_SCOPES = [
-  "docx:document:create",
-  "docx:document:readonly",
-  "docx:document:write_only",
-  "search:docs:read",
-  "wiki:wiki:readonly",
-  "contact:user:search",
-  "contact:contact.base:readonly",
-  "docs:document.comment:read",
-  "docs:document.comment:create",
-  "offline_access",
-  "wiki:node:read",
-  "wiki:node:create",
-  "drive:drive",
+"bitable:app",
+"board:whiteboard:node:create",
+"board:whiteboard:node:delete",
+"board:whiteboard:node:read",
+"board:whiteboard:node:update",
+"contact:contact.base:readonly",
+"contact:user.id:readonly",
+"contact:user:search",
+"docs:document:import",
+"docx:document",
+"drive:drive",
+"drive:drive:version:readonly",
+"offline_access",
+"search:docs:read",
+"space:document:retrieve",
+"wiki:node:read",
+"wiki:wiki",
+"wiki:wiki:readonly"
 ];
 
 /**
